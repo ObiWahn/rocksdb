@@ -32,7 +32,7 @@
 # 3. cmake ..
 # 4. make -j
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.2)
 project(rocksdb)
 
 if(POLICY CMP0042)
@@ -65,6 +65,7 @@ else()
   endif()
 endif()
 
+# set GIT_DATE_TIME - Create US Time String
 if(WIN32)
   execute_process(COMMAND powershell -noprofile -Command "Get-Date -format MM_dd_yyyy" OUTPUT_VARIABLE DATE)
   execute_process(COMMAND powershell -noprofile -Command "Get-Date -format HH:mm:ss" OUTPUT_VARIABLE TIME)
@@ -79,6 +80,7 @@ endif()
 
 find_package(Git)
 
+# set GIT_SHA - sha hash of current commit
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   if(WIN32)
     execute_process(COMMAND $ENV{COMSPEC} /C ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD OUTPUT_VARIABLE GIT_SHA)
@@ -88,9 +90,9 @@ if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
 else()
   set(GIT_SHA 0)
 endif()
-
 string(REGEX REPLACE "[^0-9a-f]+" "" GIT_SHA "${GIT_SHA}")
 
+# run version script on UNIX like systems
 if(NOT WIN32)
   execute_process(COMMAND
       "./build_tools/version.sh" "full"
@@ -106,32 +108,37 @@ if(NOT WIN32)
   string(STRIP "${ROCKSDB_VERSION_MAJOR}" ROCKSDB_VERSION_MAJOR)
 endif()
 
+# select runteime (dynamic / static)
 option(WITH_MD_LIBRARY "build with MD" ON)
 if(WIN32 AND MSVC)
   if(WITH_MD_LIBRARY)
-    set(RUNTIME_LIBRARY "MD")
+      set(RUNTIME_LIBRARY "MD") #DYNAMIC
   else()
-    set(RUNTIME_LIBRARY "MT")
+      set(RUNTIME_LIBRARY "MT") #STATIC
   endif()
 endif()
 
+# portable does not set -m<arch>
+# but we are still able to force SSE
 option(PORTABLE "build a portable binary" OFF)
 option(FORCE_SSE42 "force building with SSE4.2, even when PORTABLE=ON" OFF)
 if(PORTABLE)
   # MSVC does not need a separate compiler flag to enable SSE4.2; if nmmintrin.h
   # is available, it is available by default.
   if(FORCE_SSE42 AND NOT MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2")
+    set(RDB_ARCH_FLAGS "-msse4.2")
   endif()
 else()
   if(MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX2")
+    set(RDB_ARCH_FLAGS "/arch:AVX2")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    set(RDB_ARCH_FLAGS "-march=native")
   endif()
 endif()
 
-set(CMAKE_REQUIRED_FLAGS ${CMAKE_CXX_FLAGS})
+# check compiler
+## check if sse is available with the compiler
+set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS} ${RDB_ARCH_FLAGS}") # sets flags for CheckCXXSourceCompiles
 include(CheckCXXSourceCompiles)
 CHECK_CXX_SOURCE_COMPILES("
 #include <cstdint>
@@ -140,12 +147,14 @@ int main() {
   volatile uint32_t x = _mm_crc32_u32(0, 0);
 }
 " HAVE_SSE42)
-if(HAVE_SSE42)
-  add_definitions(-DHAVE_SSE42)
-elseif(FORCE_SSE42)
+
+## check if sse is available
+
+if(FORCE_SSE42 and not HAVE_SSE42)
   message(FATAL_ERROR "FORCE_SSE42=ON but unable to compile with SSE4.2 enabled")
 endif()
 
+## check compiler if thread local is available
 CHECK_CXX_SOURCE_COMPILES("
 #if defined(_MSC_VER) && !defined(__thread)
 #define __thread __declspec(thread)
@@ -154,15 +163,19 @@ int main() {
   static __thread int tls;
 }
 " HAVE_THREAD_LOCAL)
+
 if(HAVE_THREAD_LOCAL)
   add_definitions(-DROCKSDB_SUPPORT_THREAD_LOCAL)
 endif()
 
+# create build version lib
 set(BUILD_VERSION_CC ${CMAKE_BINARY_DIR}/build_version.cc)
 configure_file(util/build_version.cc.in ${BUILD_VERSION_CC} @ONLY)
 add_library(build_version OBJECT ${BUILD_VERSION_CC})
-target_include_directories(build_version PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/util)
+target_include_directories(build_version PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/util)
+
+# modify compiler flags
+## set compiler / os specific flags
 if(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zi /nologo /EHsc /GS /Gd /GR /GF /fp:precise /Zc:wchar_t /Zc:forScope /errorReport:queue")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FC /d2Zi+ /W3 /wd4127 /wd4800 /wd4996 /wd4351")
@@ -184,6 +197,7 @@ else()
   endif()
 endif()
 
+## fail on warnings
 option(FAIL_ON_WARNINGS "Treat compile warnings as errors" ON)
 if(FAIL_ON_WARNINGS)
   if(MSVC)
@@ -193,6 +207,7 @@ if(FAIL_ON_WARNINGS)
   endif()
 endif()
 
+## build with ASAN
 option(WITH_ASAN "build with ASAN" OFF)
 if(WITH_ASAN)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
@@ -203,6 +218,7 @@ if(WITH_ASAN)
   endif()
 endif()
 
+## build with TSAN
 option(WITH_TSAN "build with TSAN" OFF)
 if(WITH_TSAN)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread -pie")
@@ -213,6 +229,7 @@ if(WITH_TSAN)
   endif()
 endif()
 
+## build with UBSAN
 option(WITH_UBSAN "build with UBSAN" OFF)
 if(WITH_UBSAN)
   add_definitions(-DROCKSDB_UBSAN_RUN)
@@ -227,6 +244,7 @@ endif()
 # Used to run CI build and tests so we can run faster
 set(OPTIMIZE_DEBUG_DEFAULT 0)        # Debug build is unoptimized by default use -DOPTDBG=1 to optimize
 
+# set debug level
 if(DEFINED OPTDBG)
    set(OPTIMIZE_DEBUG ${OPTDBG})
 else()
@@ -256,6 +274,7 @@ if(ROCKSDB_LITE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 endif()
 
+# add definitions for various operating systems
 if(CMAKE_SYSTEM_NAME MATCHES "Cygwin")
   add_definitions(-fno-builtin-memcmp -DCYGWIN)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
@@ -291,7 +310,6 @@ if(NOT WIN32)
 endif()
 
 option(WITH_FALLOCATE "build with fallocate" ON)
-
 if(WITH_FALLOCATE)
   include(CheckCSourceCompiles)
   CHECK_C_SOURCE_COMPILES("
@@ -587,6 +605,22 @@ if(WIN32)
     set_target_properties(${ROCKSDB_IMPORT_LIB} PROPERTIES
       COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_IMPORT_LIB}.pdb")
   endif()
+endif()
+
+set_property(
+  SOURCE util/crc32.cc
+  PROPERTY COMPILE_FLAGS
+  APPEND_STRING
+  ${RDB_ARCH_FLAGS}
+)
+
+if(HAVE_SSE42)
+  set_property(
+    SOURCE util/crc32.cc
+    PROPERTY COMPILE_DEFINITIONS
+    APPEND
+    HAVE_SSE42=1
+  )
 endif()
 
 option(WITH_JNI "build with JNI" OFF)
