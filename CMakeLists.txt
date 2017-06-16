@@ -150,7 +150,9 @@ int main() {
 
 ## check if sse is available
 
-if(FORCE_SSE42 and not HAVE_SSE42)
+message(info "HAVE_SSE42: ${HAVE_SSE42}")
+message(info "FORCE_SSE42: ${HAVE_SSE42}")
+if(FORCE_SSE42 AND NOT HAVE_SSE42)
   message(FATAL_ERROR "FORCE_SSE42=ON but unable to compile with SSE4.2 enabled")
 endif()
 
