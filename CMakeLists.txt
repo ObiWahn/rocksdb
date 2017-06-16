@@ -610,20 +610,19 @@ if(WIN32)
 endif()
 
 ## TODO -- set property on sse version of crc file
-set_property(
-  SOURCE util/crc32.cc
-  PROPERTY COMPILE_FLAGS
-  APPEND_STRING
-  ${RDB_ARCH_FLAGS}
-)
+get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
+message(INFO "compile flags ${info_out}")
+get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
+message(INFO "compile definitions ${info_out}")
+
+set_property( SOURCE util/crc32.cc APPEND PROPERTY COMPILE_FLAGS "${RDB_ARCH_FLAGS}")
+get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
+message(INFO "compile flags ${info_out}")
 
 if(HAVE_SSE42)
-  set_property(
-    SOURCE util/crc32.cc
-    PROPERTY COMPILE_DEFINITIONS
-    APPEND
-    HAVE_SSE42=1
-  )
+  set_property( SOURCE util/crc32.cc APPEND PROPERTY COMPILE_DEFINITIONS "HAVE_SSE42=1")
+  get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
+  message(INFO "compile definitions ${info_out}")
 endif()
 
 option(WITH_JNI "build with JNI" OFF)
