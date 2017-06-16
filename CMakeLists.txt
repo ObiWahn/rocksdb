@@ -35,9 +35,9 @@
 cmake_minimum_required(VERSION 3.2)
 project(rocksdb)
 
-if(POLICY CMP0042)
-  cmake_policy(SET CMP0042 NEW)
-endif()
+#if(POLICY CMP0042)
+#  cmake_policy(SET CMP0042 NEW) #MACOS RPATH ENABLED BY DEFAULT - (default since 3.0)
+#endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
@@ -78,9 +78,9 @@ else()
   set(GIT_DATE_TIME "${DATETIME}")
 endif()
 
-find_package(Git)
 
 # set GIT_SHA - sha hash of current commit
+find_package(Git)
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   if(WIN32)
     execute_process(COMMAND $ENV{COMSPEC} /C ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD OUTPUT_VARIABLE GIT_SHA)
@@ -108,7 +108,7 @@ if(NOT WIN32)
   string(STRIP "${ROCKSDB_VERSION_MAJOR}" ROCKSDB_VERSION_MAJOR)
 endif()
 
-# select runteime (dynamic / static)
+# select windows runteime (dynamic / static)
 option(WITH_MD_LIBRARY "build with MD" ON)
 if(WIN32 AND MSVC)
   if(WITH_MD_LIBRARY)
@@ -129,7 +129,7 @@ if(PORTABLE)
     set(RDB_ARCH_FLAGS "-msse4.2")
   endif()
 else()
-  if(MSVC)
+  if(MSVC) #still append to global configuration?
     set(RDB_ARCH_FLAGS "/arch:AVX2")
   else()
     set(RDB_ARCH_FLAGS "-march=native")
@@ -137,7 +137,7 @@ else()
 endif()
 
 # check compiler
-## check if sse is available with the compiler
+## verify that sse is available in the compiler
 set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS} ${RDB_ARCH_FLAGS}") # sets flags for CheckCXXSourceCompiles
 include(CheckCXXSourceCompiles)
 CHECK_CXX_SOURCE_COMPILES("
@@ -148,8 +148,7 @@ int main() {
 }
 " HAVE_SSE42)
 
-## check if sse is available
-
+## fail if force ssl is enabled but the compiler is not capable
 message(info "HAVE_SSE42: ${HAVE_SSE42}")
 message(info "FORCE_SSE42: ${HAVE_SSE42}")
 if(FORCE_SSE42 AND NOT HAVE_SSE42)
