@@ -607,6 +607,7 @@ if(WIN32)
   endif()
 endif()
 
+## TODO -- set property on sse version of crc file
 set_property(
   SOURCE util/crc32.cc
   PROPERTY COMPILE_FLAGS
