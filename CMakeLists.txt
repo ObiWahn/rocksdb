@@ -333,10 +333,6 @@ if(HAVE_MALLOC_USABLE_SIZE)
   add_definitions(-DROCKSDB_MALLOC_USABLE_SIZE)
 endif()
 
-include_directories(${PROJECT_SOURCE_DIR})
-include_directories(${PROJECT_SOURCE_DIR}/include)
-find_package(Threads REQUIRED)
-
 # Main library source code
 
 set(SOURCES
@@ -568,21 +564,40 @@ if(WITH_LIBRADOS)
 endif()
 
 
-set(ROCKSDB_STATIC_LIB rocksdb${ARTIFACT_SUFFIX})
 set(ROCKSDB_SHARED_LIB rocksdb-shared${ARTIFACT_SUFFIX})
-set(ROCKSDB_IMPORT_LIB ${ROCKSDB_SHARED_LIB})
+set(ROCKSDB_STATIC_LIB rocksdb${ARTIFACT_SUFFIX})
+
+set(ROCKSDB_INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/include")
+
+find_package(Threads REQUIRED)
+set(SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT})
 
 if(WIN32)
+  set (ROCKSDB_LIBS ${ROCKSDB_STATIC_LIB})
   set(SYSTEM_LIBS ${SYSTEM_LIBS} Shlwapi.lib Rpcrt4.lib)
-  set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
-else()
-  set(SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT})
-  set(LIBS ${ROCKSDB_SHARED_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+endif()
 
-  add_library(${ROCKSDB_SHARED_LIB} SHARED ${SOURCES})
-  target_link_libraries(${ROCKSDB_SHARED_LIB}
-                        ${THIRDPARTY_LIBS} ${SYSTEM_LIBS}
-                       )
+#shareds
+add_library(${ROCKSDB_SHARED_LIB} SHARED ${SOURCES})
+target_include_directories(${ROCKSDB_SHARED_LIB} PUBLIC ${ROCKSDB_INCLUDE_DIRECTORIES})
+target_link_libraries(${ROCKSDB_SHARED_LIB}
+                      ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+
+#static
+add_library(${ROCKSDB_STATIC_LIB} STATIC ${SOURCES})
+target_include_directories(${ROCKSDB_STATIC_LIB} PUBLIC ${ROCKSDB_INCLUDE_DIRECTORIES})
+target_link_libraries(${ROCKSDB_STATIC_LIB}
+                      ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+
+if(WIN32)
+  target_compile_definitons(${ROCKSDB_SHARED_LIB} ROCKSDB_DLL ROCKSDB_LIBRARY_EXPORTS)
+  if(MSVC)
+    set_target_properties(${ROCKSDB_STATIC_LIB} PROPERTIES
+      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_STATIC_LIB}.pdb")
+    set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES
+      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_SHARED_LIB}.pdb")
+  endif()
+else()
   set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES
                         LINKER_LANGUAGE CXX
                         VERSION ${ROCKSDB_VERSION}
@@ -591,42 +606,20 @@ else()
                         OUTPUT_NAME "rocksdb")
 endif()
 
-add_library(${ROCKSDB_STATIC_LIB} STATIC ${SOURCES})
-target_link_libraries(${ROCKSDB_STATIC_LIB}
-                      ${THIRDPARTY_LIBS} ${SYSTEM_LIBS}
-                     )
-
-if(WIN32)
-  add_library(${ROCKSDB_IMPORT_LIB} SHARED ${SOURCES})
-  target_link_libraries(${ROCKSDB_IMPORT_LIB}
-                        ${THIRDPARTY_LIBS} ${SYSTEM_LIBS}
-                       )
-  set_target_properties(${ROCKSDB_IMPORT_LIB} PROPERTIES
-                        COMPILE_DEFINITIONS
-                            "ROCKSDB_DLL;ROCKSDB_LIBRARY_EXPORTS"
-                       )
-  if(MSVC)
-    set_target_properties(${ROCKSDB_STATIC_LIB} PROPERTIES
-      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_STATIC_LIB}.pdb")
-    set_target_properties(${ROCKSDB_IMPORT_LIB} PROPERTIES
-      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_IMPORT_LIB}.pdb")
-  endif()
-endif()
 
 ## TODO -- set property on sse version of crc file
-get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
-message(INFO "compile flags ${info_out}")
-get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
-message(INFO "compile definitions ${info_out}")
-
+#get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
+#message(INFO "compile flags ${info_out}")
+#get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
+#message(INFO "compile definitions ${info_out}")
 set_property( SOURCE util/crc32.cc APPEND PROPERTY COMPILE_FLAGS "${RDB_ARCH_FLAGS}")
-get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
-message(INFO "compile flags ${info_out}")
+#get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_FLAGS)
+#message(INFO "compile flags ${info_out}")
 
 if(HAVE_SSE42)
   set_property( SOURCE util/crc32.cc APPEND PROPERTY COMPILE_DEFINITIONS "HAVE_SSE42=1")
-  get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
-  message(INFO "compile definitions ${info_out}")
+  #get_property(info_out SOURCE util/crc32.cc PROPERTY COMPILE_DEFINITIONS)
+  #message(INFO "compile definitions ${info_out}")
 endif()
 
 option(WITH_JNI "build with JNI" OFF)
@@ -844,7 +837,8 @@ if(ROCKSDB_TESTING)
        EXCLUDE_FROM_DEFAULT_BUILD_MINRELEASE 1
        EXCLUDE_FROM_DEFAULT_BUILD_RELWITHDEBINFO 1
        )
-     target_link_libraries(${exename}${ARTIFACT_SUFFIX} ${ROCKSDB_IMPORT_LIB} testutillib${ARTIFACT_SUFFIX})
+                                                           #import lib - was emptyon linux
+     target_link_libraries(${exename}${ARTIFACT_SUFFIX} ${ROCKSDB_SHARED_LIB} testutillib${ARTIFACT_SUFFIX})
      add_test(NAME ${exename} COMMAND ${exename}${ARTIFACT_SUFFIX})
      add_dependencies(check ${exename}${ARTIFACT_SUFFIX})
  endforeach(sourcefile ${C_TEST_EXES})
