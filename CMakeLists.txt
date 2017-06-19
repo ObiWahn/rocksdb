@@ -590,7 +590,7 @@ target_link_libraries(${ROCKSDB_STATIC_LIB}
                       ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
 
 if(WIN32)
-  target_compile_definitons(${ROCKSDB_SHARED_LIB} ROCKSDB_DLL ROCKSDB_LIBRARY_EXPORTS)
+    target_compile_definitions(${ROCKSDB_SHARED_LIB} PUBLIC ROCKSDB_DLL ROCKSDB_LIBRARY_EXPORTS)
   if(MSVC)
     set_target_properties(${ROCKSDB_STATIC_LIB} PROPERTIES
       COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${ROCKSDB_STATIC_LIB}.pdb")
